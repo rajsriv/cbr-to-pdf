@@ -1,1 +1,1511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CBR to PDF Converter - Premium Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
+        :root {
+            --primary-orange: #ff6b4a;
+            --accent-orange: #ff8566;
+            --dark-bg: #1a1a1a;
+            --darker-bg: #0f0f0f;
+            --light-text: #e0e7ff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--darker-bg) 0%, #2a1a10 50%, var(--darker-bg) 100%);
+            background-attachment: fixed;
+            color: var(--light-text);
+            min-height: 100vh;
+            display: flex;
+            padding: 20px;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Blurred background image */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url('https://agi-prod-file-upload-public-main-use1.s3.amazonaws.com/00af7eb2-e214-4293-8198-b1d6ffd75dbd');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            filter: blur(5px) brightness(0.5);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Black side panels overlay */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(to right, 
+                    rgba(0, 0, 0, 0.95) 0%, 
+                    rgba(0, 0, 0, 0) 12%, 
+                    rgba(0, 0, 0, 0) 88%, 
+                    rgba(0, 0, 0, 0.95) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .container {
+            width: 100%;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 2;
+            padding: 40px 20px;
+        }
+
+        .card {
+            background: rgba(20, 20, 25, 0.3);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 107, 74, 0.15);
+            border-radius: 25px;
+            padding: 50px 60px;
+            max-width: 900px;
+            width: 100%;
+            position: relative;
+            box-shadow: 
+                0 0 30px rgba(255, 107, 74, 0.08),
+                inset 0 1px 0 rgba(255, 107, 74, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 107, 74, 0.4);
+            box-shadow: 
+                0 12px 48px rgba(0, 0, 0, 0.6),
+                0 0 80px rgba(255, 107, 74, 0.15),
+                inset 0 1px 0 rgba(255, 107, 74, 0.25);
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 3em;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #ff8566 0%, #ff6b4a 50%, #ff8566 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: rgba(226, 232, 240, 0.7);
+            margin-bottom: 45px;
+            font-size: 1.1em;
+            letter-spacing: 0.8px;
+            font-weight: 300;
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 35px;
+            background: rgba(255, 107, 74, 0.08);
+            padding: 12px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 107, 74, 0.2);
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 14px 22px;
+            border: 1.5px solid rgba(255, 107, 74, 0.3);
+            background: transparent;
+            color: rgba(226, 232, 240, 0.7);
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.95em;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .mode-btn.active {
+            background: linear-gradient(135deg, #ff6b4a, #ff8566);
+            color: white;
+            border-color: rgba(255, 107, 74, 0.8);
+            box-shadow: 0 0 25px rgba(255, 107, 74, 0.4);
+        }
+
+        .mode-btn:hover:not(.active) {
+            border-color: rgba(255, 107, 74, 0.6);
+            background: rgba(255, 107, 74, 0.1);
+        }
+
+        .upload-area {
+            background: rgba(255, 107, 74, 0.06);
+            border: 2.5px dashed rgba(255, 107, 74, 0.35);
+            border-radius: 18px;
+            padding: 50px 35px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 35px;
+        }
+
+        .upload-area::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 107, 74, 0.25), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .upload-area:hover::before {
+            left: 100%;
+        }
+
+        .upload-area:hover {
+            border-color: rgba(255, 107, 74, 0.7);
+            background: rgba(255, 107, 74, 0.12);
+            box-shadow: 0 0 35px rgba(255, 107, 74, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .upload-icon {
+            font-size: 3.5em;
+            margin-bottom: 18px;
+            display: block;
+            animation: float-icon 3s ease-in-out infinite;
+        }
+
+        @keyframes float-icon {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-12px); }
+        }
+
+        .upload-area p {
+            margin: 12px 0;
+            font-size: 1.15em;
+            line-height: 1.6;
+        }
+
+        .upload-area .highlight {
+            color: var(--accent-orange);
+            font-weight: 700;
+        }
+
+        .upload-area small {
+            display: block;
+            color: rgba(226, 232, 240, 0.5);
+            margin-top: 12px;
+            font-size: 0.9em;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .info-box {
+            background: rgba(255, 107, 74, 0.08);
+            border-left: 5px solid var(--accent-orange);
+            border-radius: 12px;
+            padding: 22px;
+            margin: 25px 0;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 107, 74, 0.2);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .info-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 107, 74, 0.2), transparent);
+            transition: left 0.6s ease;
+        }
+
+        .info-box:hover::before {
+            left: 100%;
+        }
+
+        .info-box:hover {
+            background: rgba(255, 107, 74, 0.12);
+            border-color: rgba(255, 107, 74, 0.4);
+            box-shadow: 0 0 28px rgba(255, 107, 74, 0.18);
+            transform: translateX(5px);
+        }
+
+        .info-box p {
+            margin: 0;
+            font-size: 0.98em;
+            line-height: 1.7;
+            color: rgba(226, 232, 240, 0.95);
+        }
+
+        .info-box strong {
+            color: var(--accent-orange);
+        }
+
+        .batch-queue {
+            display: none;
+            background: rgba(255, 107, 74, 0.08);
+            border-radius: 14px;
+            padding: 22px;
+            margin: 25px 0;
+            border: 1px solid rgba(255, 107, 74, 0.2);
+            max-height: 320px;
+            overflow-y: auto;
+        }
+
+        .batch-queue.show {
+            display: block;
+        }
+
+        .queue-item {
+            background: rgba(255, 107, 74, 0.08);
+            padding: 14px;
+            margin-bottom: 12px;
+            border-radius: 10px;
+            border-left: 3.5px solid var(--accent-orange);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .queue-item:hover {
+            background: rgba(255, 107, 74, 0.14);
+        }
+
+        .queue-item-name {
+            flex: 1;
+            font-size: 0.92em;
+            color: rgba(226, 232, 240, 0.95);
+        }
+
+        .queue-item-remove {
+            background: rgba(255, 68, 68, 0.2);
+            border: none;
+            color: #ff8a8a;
+            padding: 5px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.2s ease;
+            font-weight: 600;
+        }
+
+        .queue-item-remove:hover {
+            background: rgba(255, 68, 68, 0.3);
+        }
+
+        .controls {
+            margin: 35px 0;
+            display: flex;
+            gap: 18px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            flex: 1;
+            min-width: 160px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 0.92em;
+            font-weight: 700;
+            color: rgba(226, 232, 240, 0.9);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        select, input[type="number"] {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255, 107, 74, 0.12);
+            border: 1.5px solid rgba(255, 107, 74, 0.35);
+            border-radius: 12px;
+            color: var(--light-text);
+            font-size: 1em;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        select {
+            background: rgba(20, 20, 25, 0.5) !important;
+            backdrop-filter: blur(10px);
+            color: var(--light-text) !important;
+        }
+
+        select option {
+            background: rgba(20, 20, 25, 0.95);
+            color: var(--light-text);
+            padding: 8px;
+        }
+
+        select option:checked {
+            background: linear-gradient(135deg, #ff6b4a, #ff8566);
+            color: white;
+        }
+
+        select:hover, input[type="number"]:hover {
+            border-color: rgba(255, 107, 74, 0.6);
+            background: rgba(255, 107, 74, 0.18);
+        }
+
+        select:focus, input[type="number"]:focus {
+            outline: none;
+            border-color: var(--accent-orange);
+            background: rgba(255, 107, 74, 0.2);
+            box-shadow: 0 0 22px rgba(255, 107, 74, 0.35);
+        }
+
+        /* Range slider styling */
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 107, 74, 0.2);
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff6b4a, #ff8566);
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 107, 74, 0.6);
+            border: 2px solid rgba(255, 107, 74, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 25px rgba(255, 107, 74, 0.9);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff6b4a, #ff8566);
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255, 107, 74, 0.6);
+            border: 2px solid rgba(255, 107, 74, 0.4);
+            transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 0 25px rgba(255, 107, 74, 0.9);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 35px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            flex: 1;
+            min-width: 130px;
+            padding: 16px 32px;
+            font-size: 1.02em;
+            font-weight: 700;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+            overflow: hidden;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-orange) 0%, var(--accent-orange) 100%);
+            color: white;
+            box-shadow: 
+                0 0 25px rgba(255, 107, 74, 0.5),
+                0 0 50px rgba(255, 107, 74, 0.25);
+            border: 1px solid rgba(255, 107, 74, 0.6);
+        }
+
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.35);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 
+                0 0 40px rgba(255, 107, 74, 0.7),
+                0 0 70px rgba(255, 107, 74, 0.4);
+            border-color: rgba(255, 107, 74, 0.9);
+        }
+
+        .btn-primary:active {
+            transform: translateY(-1px) scale(0.98);
+        }
+
+        .btn-primary:active::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 107, 74, 0.15);
+            color: var(--accent-orange);
+            border: 1.5px solid rgba(255, 107, 74, 0.4);
+            box-shadow: inset 0 0 20px rgba(255, 107, 74, 0.05);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 107, 74, 0.25);
+            border-color: rgba(255, 107, 74, 0.7);
+            box-shadow: 
+                inset 0 0 20px rgba(255, 107, 74, 0.1),
+                0 0 30px rgba(255, 107, 74, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        button:disabled:hover {
+            transform: none !important;
+        }
+
+        .status-message {
+            margin-top: 30px;
+            padding: 20px 24px;
+            border-radius: 14px;
+            text-align: center;
+            font-weight: 600;
+            animation: slideInUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 107, 74, 0.2);
+            display: none;
+        }
+
+        .status-message.show {
+            display: block;
+        }
+
+        .status-message.success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #86efac;
+            border-color: rgba(34, 197, 94, 0.3);
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.25);
+        }
+
+        .status-message.error {
+            background: rgba(239, 68, 68, 0.15);
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.3);
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.25);
+        }
+
+        .status-message.loading {
+            background: rgba(255, 107, 74, 0.15);
+            color: var(--accent-orange);
+            border-color: rgba(255, 107, 74, 0.3);
+            box-shadow: 0 0 25px rgba(255, 107, 74, 0.25);
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 107, 74, 0.3);
+            border-top: 2px solid var(--accent-orange);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .modal {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.95);
+            background: rgba(15, 15, 20, 0.95);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 107, 74, 0.3);
+            border-radius: 22px;
+            box-shadow: 
+                0 25px 70px rgba(0, 0, 0, 0.4),
+                0 0 70px rgba(255, 107, 74, 0.25);
+            z-index: 1000;
+            max-width: 550px;
+            width: 90%;
+            max-height: 85vh;
+            display: none;
+            flex-direction: column;
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: none;
+        }
+
+        .modal.show {
+            display: flex;
+            opacity: 1;
+            transform: translate(-50%, -50%) scale(1);
+            pointer-events: auto;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 999;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .modal-overlay.show {
+            display: block;
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 28px;
+            border-bottom: 1px solid rgba(255, 107, 74, 0.2);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.6em;
+            background: linear-gradient(135deg, #ff8566 0%, #ff6b4a 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: rgba(226, 232, 240, 0.6);
+            font-size: 2.2em;
+            cursor: pointer;
+            padding: 0;
+            width: 45px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            border-radius: 10px;
+        }
+
+        .modal-close:hover {
+            color: var(--accent-orange);
+            background: rgba(255, 107, 74, 0.15);
+        }
+
+        .modal-body {
+            padding: 28px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-body::-webkit-scrollbar {
+            width: 7px;
+        }
+
+        .modal-body::-webkit-scrollbar-track {
+            background: rgba(255, 107, 74, 0.05);
+            border-radius: 4px;
+        }
+
+        .modal-body::-webkit-scrollbar-thumb {
+            background: rgba(255, 107, 74, 0.35);
+            border-radius: 4px;
+        }
+
+        .modal-body::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 107, 74, 0.6);
+        }
+
+        .modal-footer {
+            padding: 22px 28px;
+            border-top: 1px solid rgba(255, 107, 74, 0.2);
+            display: flex;
+            gap: 14px;
+            justify-content: flex-end;
+        }
+
+        .modal-section {
+            margin-bottom: 28px;
+        }
+
+        .modal-section h3 {
+            font-size: 1.15em;
+            margin-bottom: 16px;
+            color: var(--accent-orange);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            font-weight: 700;
+        }
+
+        .page-range-controls {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 22px;
+        }
+
+        .range-input-group {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .range-input-group label {
+            margin-bottom: 8px;
+            font-size: 0.88em;
+            font-weight: 700;
+            color: rgba(226, 232, 240, 0.9);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .range-input-group input {
+            padding: 11px 14px;
+            background: rgba(255, 107, 74, 0.08);
+            border: 1.5px solid rgba(255, 107, 74, 0.3);
+            border-radius: 11px;
+            color: var(--light-text);
+            font-size: 0.98em;
+            transition: all 0.3s ease;
+        }
+
+        .range-input-group input:hover {
+            border-color: rgba(255, 107, 74, 0.6);
+            background: rgba(255, 107, 74, 0.12);
+        }
+
+        .range-input-group input:focus {
+            outline: none;
+            border-color: var(--accent-orange);
+            background: rgba(255, 107, 74, 0.15);
+            box-shadow: 0 0 22px rgba(255, 107, 74, 0.35);
+        }
+
+        .page-range-slider {
+            position: relative;
+            margin: 32px 0;
+            padding: 0 8px;
+        }
+
+        .page-range-slider input[type="range"] {
+            width: 100%;
+            height: 7px;
+            border-radius: 4px;
+            background: rgba(255, 107, 74, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .page-range-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff6b4a, #ff8566);
+            cursor: pointer;
+            box-shadow: 0 0 18px rgba(255, 107, 74, 0.6);
+            transition: all 0.2s ease;
+            border: 2px solid rgba(255, 107, 74, 0.4);
+        }
+
+        .page-range-slider input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 30px rgba(255, 107, 74, 0.9);
+        }
+
+        .page-range-slider input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #ff6b4a, #ff8566);
+            cursor: pointer;
+            box-shadow: 0 0 18px rgba(255, 107, 74, 0.6);
+            transition: all 0.2s ease;
+            border: 2px solid rgba(255, 107, 74, 0.4);
+        }
+
+        .page-range-slider input[type="range"]::-moz-range-thumb:hover {
+            transform: scale(1.25);
+            box-shadow: 0 0 30px rgba(255, 107, 74, 0.9);
+        }
+
+        .range-labels {
+            display: flex;
+            justify-content: space-between;
+            padding: 16px 8px 0 8px;
+            font-size: 0.92em;
+            color: rgba(226, 232, 240, 0.65);
+        }
+
+        .preset-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .preset-btn {
+            padding: 13px 18px;
+            background: rgba(255, 107, 74, 0.15);
+            border: 1.5px solid rgba(255, 107, 74, 0.4);
+            color: var(--accent-orange);
+            border-radius: 11px;
+            cursor: pointer;
+            font-weight: 700;
+            font-size: 0.92em;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+
+        .preset-btn:hover {
+            background: rgba(255, 107, 74, 0.25);
+            border-color: rgba(255, 107, 74, 0.7);
+            box-shadow: 0 0 24px rgba(255, 107, 74, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .preset-btn:active {
+            transform: translateY(0);
+        }
+
+        .preset-btn.active {
+            background: linear-gradient(135deg, #ff6b4a, #ff8566);
+            color: white;
+            border-color: rgba(255, 107, 74, 0.9);
+            box-shadow: 0 0 35px rgba(255, 107, 74, 0.5);
+        }
+
+        @media (max-width: 1200px) {
+            .card {
+                padding: 40px 35px;
+                border-radius: 20px;
+            }
+
+            h1 {
+                font-size: 2.2em;
+            }
+
+            .subtitle {
+                font-size: 0.98em;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+
+            button {
+                width: 100%;
+            }
+
+            .controls {
+                flex-direction: column;
+                gap: 16px;
+            }
+
+            .control-group {
+                min-width: 100%;
+            }
+
+            .modal {
+                width: 95%;
+                max-height: 90vh;
+            }
+
+            .page-range-controls {
+                flex-direction: column;
+            }
+
+            .preset-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .modal-footer {
+                flex-direction: column;
+            }
+
+            .modal-footer button {
+                width: 100%;
+            }
+
+            .mode-toggle {
+                flex-direction: column;
+            }
+
+            .upload-area {
+                padding: 35px 25px;
+            }
+
+            .upload-icon {
+                font-size: 2.8em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>📚 CBR/CBZ → PDF</h1>
+            <p class="subtitle">Convert Comics to Beautiful PDFs</p>
+
+            <div class="mode-toggle">
+                <button class="mode-btn active" data-mode="single">Single</button>
+                <button class="mode-btn" data-mode="batch">Batch</button>
+            </div>
+
+            <div class="upload-area" id="uploadArea">
+                <span class="upload-icon">📖</span>
+                <p>Click or drag your <span class="highlight">CBR/CBZ files</span> here</p>
+                <small>Maximum file size: 500MB</small>
+                <input type="file" id="fileInput" accept=".cbr,.cbz" multiple />
+            </div>
+
+            <div class="info-box">
+                <p><strong>✨ Features:</strong> Supports all CBR/CBZ formats • Preserves image quality • Fast conversion • A4 optimized output</p>
+            </div>
+
+            <div class="batch-queue" id="batchQueue">
+                <h3 style="color: var(--accent-orange); margin-bottom: 15px;">Files to Convert</h3>
+                <div id="queueItems"></div>
+                <div style="margin-top: 15px; font-size: 0.9em; color: rgba(226, 232, 240, 0.6);">
+                    Total: <span id="queueCount">0</span> files
+                </div>
+            </div>
+
+            <div class="controls">
+                <div class="control-group">
+                    <label for="bgColor">Background</label>
+                    <select id="bgColor">
+                        <option value="white">White</option>
+                        <option value="black">Black</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="quality">Quality: <span id="qualityValue">75</span>%</label>
+                    <input type="range" id="quality" min="1" max="100" value="75" style="width: 100%; padding: 8px 0; background: transparent; border: none; cursor: pointer;" />
+                </div>
+            </div>
+
+            <div class="button-group" id="singleButtonGroup">
+                <button class="btn-primary" id="convertBtn" disabled>
+                    Convert Now
+                </button>
+                <button class="btn-secondary" id="advancedBtn" disabled>
+                    Advanced
+                </button>
+                <button class="btn-secondary" id="resetBtn">
+                    Clear
+                </button>
+            </div>
+
+            <div class="button-group" id="batchButtonGroup" style="display: none;">
+                <button class="btn-primary" id="batchConvertBtn" disabled>
+                    ⚡ Convert All
+                </button>
+                <button class="btn-secondary" id="batchClearBtn">
+                    Clear All
+                </button>
+            </div>
+
+            <div class="status-message" id="statusMessage"></div>
+
+            <div class="modal" id="advancedModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Advanced Options</h2>
+                        <button class="modal-close" id="modalCloseBtn">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="info-box">
+                            <p><strong>📄 Total Pages:</strong> <span id="totalPagesInfo">0</span></p>
+                        </div>
+
+                        <div class="modal-section">
+                            <h3>Select Page Range</h3>
+                            <div class="page-range-controls">
+                                <div class="range-input-group">
+                                    <label for="pageStart">Start Page:</label>
+                                    <input type="number" id="pageStart" min="1" value="1" />
+                                </div>
+                                <div class="range-input-group">
+                                    <label for="pageEnd">End Page:</label>
+                                    <input type="number" id="pageEnd" min="1" value="1" />
+                                </div>
+                            </div>
+
+                            <div class="page-range-slider">
+                                <input type="range" id="pageStartSlider" min="1" value="1" />
+                                <input type="range" id="pageEndSlider" min="1" value="1" />
+                                <div class="range-labels">
+                                    <span id="sliderStartLabel">1</span>
+                                    <span id="sliderEndLabel">1</span>
+                                </div>
+                            </div>
+
+                            <div class="info-box">
+                                <p><strong>📊 Pages to Convert:</strong> <span id="pagesToConvert">0</span></p>
+                            </div>
+                        </div>
+
+                        <div class="modal-section">
+                            <h3>Preset Ranges</h3>
+                            <div class="preset-buttons">
+                                <button class="preset-btn" data-preset="all">All Pages</button>
+                                <button class="preset-btn" data-preset="first-20">First 20</button>
+                                <button class="preset-btn" data-preset="first-50">First 50</button>
+                                <button class="preset-btn" data-preset="last-20">Last 20</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" id="modalCancelBtn">Cancel</button>
+                        <button class="btn-primary" id="modalApplyBtn">Apply & Convert</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-overlay" id="modalOverlay"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'single';
+        const modeBtns = document.querySelectorAll('.mode-btn');
+        const singleButtonGroup = document.getElementById('singleButtonGroup');
+        const batchButtonGroup = document.getElementById('batchButtonGroup');
+        const batchQueue = document.getElementById('batchQueue');
+
+        modeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                modeBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentMode = btn.dataset.mode;
+
+                if (currentMode === 'batch') {
+                    singleButtonGroup.style.display = 'none';
+                    batchButtonGroup.style.display = 'flex';
+                    fileInput.multiple = true;
+                    uploadArea.innerHTML = `
+                        <span class="upload-icon">📦</span>
+                        <p>Click or drag multiple <span class="highlight">CBR/CBZ files</span> here</p>
+                        <small>Maximum file size: 500MB per file • Max 20 files</small>
+                    `;
+                    batchQueue.classList.add('show');
+                } else {
+                    singleButtonGroup.style.display = 'flex';
+                    batchButtonGroup.style.display = 'none';
+                    fileInput.multiple = false;
+                    uploadArea.innerHTML = `
+                        <span class="upload-icon">📖</span>
+                        <p>Click or drag your <span class="highlight">CBR/CBZ files</span> here</p>
+                        <small>Maximum file size: 500MB</small>
+                    `;
+                    batchQueue.classList.remove('show');
+                }
+
+                resetForm();
+            });
+        });
+
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const convertBtn = document.getElementById('convertBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        let selectedFile = null;
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'rgba(255, 107, 74, 0.8)';
+            uploadArea.style.background = 'rgba(255, 107, 74, 0.15)';
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.style.borderColor = 'rgba(255, 107, 74, 0.35)';
+            uploadArea.style.background = 'rgba(255, 107, 74, 0.06)';
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = 'rgba(255, 107, 74, 0.35)';
+            uploadArea.style.background = 'rgba(255, 107, 74, 0.06)';
+            const files = e.dataTransfer.files;
+            
+            if (currentMode === 'batch' && files.length > 0) {
+                addFilesToBatch(Array.from(files));
+            } else if (files.length > 0) {
+                handleFileSelection(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (currentMode === 'batch' && e.target.files.length > 0) {
+                addFilesToBatch(Array.from(e.target.files));
+            } else if (e.target.files.length > 0) {
+                handleFileSelection(e.target.files[0]);
+            }
+        });
+
+        async function handleFileSelection(file) {
+            if (!file.name.endsWith('.cbr') && !file.name.endsWith('.cbz')) {
+                showStatus('Only CBR and CBZ files are supported!', 'error');
+                return;
+            }
+
+            selectedFile = file;
+            uploadArea.innerHTML = `
+                <span class="upload-icon">✅</span>
+                <p><span class="highlight">${file.name}</span></p>
+                <small>${(file.size / (1024 * 1024)).toFixed(2)} MB</small>
+            `;
+
+            showStatus('📊 Analyzing file pages...', 'loading');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+
+                const response = await fetch('/api/get-page-count', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Could not determine page count');
+                }
+
+                const data = await response.json();
+                totalPages = data.totalPages;
+                pageRange.start = 1;
+                pageRange.end = totalPages;
+
+                totalPagesInfo.textContent = totalPages;
+                pageStartInput.max = totalPages;
+                pageEndInput.max = totalPages;
+                pageStartInput.value = 1;
+                pageEndInput.value = totalPages;
+                pageStartSlider.max = totalPages;
+                pageEndSlider.max = totalPages;
+                pageStartSlider.value = 1;
+                pageEndSlider.value = totalPages;
+                sliderStartLabel.textContent = 1;
+                sliderEndLabel.textContent = totalPages;
+                pagesToConvert.textContent = totalPages;
+
+                convertBtn.disabled = false;
+                advancedBtn.disabled = false;
+
+                statusMessage.classList.remove('show', 'loading', 'error', 'success');
+                console.log(`✅ File loaded! Total pages: ${totalPages}`);
+
+            } catch (error) {
+                console.error('Error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+                setTimeout(() => resetForm(), 3000);
+            }
+        }
+
+        convertBtn.addEventListener('click', async () => {
+            pageRange.start = 1;
+            pageRange.end = totalPages;
+            await performConversion();
+        });
+
+        // Quality slider value update
+        const qualitySlider = document.getElementById('quality');
+        const qualityValue = document.getElementById('qualityValue');
+        
+        qualitySlider.addEventListener('input', (e) => {
+            qualityValue.textContent = e.target.value;
+        });
+
+        resetBtn.addEventListener('click', resetForm);
+        const advancedBtn = document.getElementById('advancedBtn');
+        const advancedModal = document.getElementById('advancedModal');
+        const modalOverlay = document.getElementById('modalOverlay');
+        const modalCloseBtn = document.getElementById('modalCloseBtn');
+        const modalCancelBtn = document.getElementById('modalCancelBtn');
+        const modalApplyBtn = document.getElementById('modalApplyBtn');
+        const pageStartInput = document.getElementById('pageStart');
+        const pageEndInput = document.getElementById('pageEnd');
+        const pageStartSlider = document.getElementById('pageStartSlider');
+        const pageEndSlider = document.getElementById('pageEndSlider');
+        const totalPagesInfo = document.getElementById('totalPagesInfo');
+        const pagesToConvert = document.getElementById('pagesToConvert');
+        const sliderStartLabel = document.getElementById('sliderStartLabel');
+        const sliderEndLabel = document.getElementById('sliderEndLabel');
+        const presetBtns = document.querySelectorAll('.preset-btn');
+
+        let totalPages = 0;
+        let pageRange = { start: 1, end: 1 };
+
+        advancedBtn.addEventListener('click', () => {
+            if (selectedFile) {
+                advancedModal.classList.add('show');
+                modalOverlay.classList.add('show');
+            }
+        });
+
+        function closeModal() {
+            advancedModal.classList.remove('show');
+            modalOverlay.classList.remove('show');
+        }
+
+        modalCloseBtn.addEventListener('click', closeModal);
+        modalCancelBtn.addEventListener('click', closeModal);
+        modalOverlay.addEventListener('click', closeModal);
+
+        pageStartInput.addEventListener('change', (e) => {
+            let val = Math.max(1, Math.min(parseInt(e.target.value) || 1, totalPages));
+            if (val > pageRange.end) val = pageRange.end;
+            pageRange.start = val;
+            pageStartInput.value = val;
+            pageStartSlider.value = val;
+            sliderStartLabel.textContent = val;
+            updatePageCount();
+        });
+
+        pageEndInput.addEventListener('change', (e) => {
+            let val = Math.max(1, Math.min(parseInt(e.target.value) || totalPages, totalPages));
+            if (val < pageRange.start) val = pageRange.start;
+            pageRange.end = val;
+            pageEndInput.value = val;
+            pageEndSlider.value = val;
+            sliderEndLabel.textContent = val;
+            updatePageCount();
+        });
+
+        pageStartSlider.addEventListener('input', (e) => {
+            let val = Math.min(parseInt(e.target.value), pageRange.end);
+            pageRange.start = val;
+            pageStartInput.value = val;
+            sliderStartLabel.textContent = val;
+            updatePageCount();
+        });
+
+        pageEndSlider.addEventListener('input', (e) => {
+            let val = Math.max(parseInt(e.target.value), pageRange.start);
+            pageRange.end = val;
+            pageEndInput.value = val;
+            sliderEndLabel.textContent = val;
+            updatePageCount();
+        });
+
+        presetBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                presetBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+
+                const preset = btn.dataset.preset;
+                if (preset === 'all') {
+                    pageRange.start = 1;
+                    pageRange.end = totalPages;
+                } else if (preset === 'first-20') {
+                    pageRange.start = 1;
+                    pageRange.end = Math.min(20, totalPages);
+                } else if (preset === 'first-50') {
+                    pageRange.start = 1;
+                    pageRange.end = Math.min(50, totalPages);
+                } else if (preset === 'last-20') {
+                    pageRange.start = Math.max(1, totalPages - 19);
+                    pageRange.end = totalPages;
+                }
+                updateSliders();
+            });
+        });
+
+        function updateSliders() {
+            pageStartInput.value = pageRange.start;
+            pageEndInput.value = pageRange.end;
+            pageStartSlider.value = pageRange.start;
+            pageEndSlider.value = pageRange.end;
+            sliderStartLabel.textContent = pageRange.start;
+            sliderEndLabel.textContent = pageRange.end;
+            updatePageCount();
+        }
+
+        function updatePageCount() {
+            const count = pageRange.end - pageRange.start + 1;
+            pagesToConvert.textContent = count;
+        }
+
+        modalApplyBtn.addEventListener('click', async () => {
+            closeModal();
+            await performConversion();
+        });
+
+        function resetForm() {
+            fileInput.value = '';
+            selectedFile = null;
+            uploadArea.innerHTML = `
+                <span class="upload-icon">📖</span>
+                <p>Click or drag your <span class="highlight">CBR/CBZ files</span> here</p>
+                <small>Maximum file size: 500MB</small>
+            `;
+            convertBtn.disabled = true;
+            advancedBtn.disabled = true;
+            statusMessage.classList.remove('show', 'success', 'error', 'loading');
+            pageRange = { start: 1, end: 1 };
+            totalPages = 0;
+        }
+
+        function showStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message show ${type}`;
+        }
+
+        async function performConversion() {
+            if (!selectedFile) return;
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('bgColor', document.getElementById('bgColor').value);
+            formData.append('quality', document.getElementById('quality').value);
+            formData.append('pageStart', pageRange.start);
+            formData.append('pageEnd', pageRange.end);
+
+            convertBtn.disabled = true;
+            advancedBtn.disabled = true;
+            
+            const pagesText = pageRange.start === 1 && pageRange.end === totalPages 
+                ? `all ${totalPages} pages` 
+                : `pages ${pageRange.start}-${pageRange.end}`;
+            
+            showStatus(`⚡ Converting ${pagesText}... Please wait! ⏳`, 'loading');
+
+            try {
+                const response = await fetch('/api/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const contentType = response.headers.get('content-type');
+                    let errorMessage = 'Conversion failed';
+                    
+                    if (contentType && contentType.includes('application/json')) {
+                        const errorData = await response.json();
+                        errorMessage = errorData.error || errorMessage;
+                    }
+                    
+                    throw new Error(errorMessage);
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = selectedFile.name.replace(/\.(cbr|cbz)$/i, '.pdf');
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                showStatus(`✅ Success! Converted ${pagesText} to PDF!`, 'success');
+                setTimeout(() => resetForm(), 2500);
+                
+            } catch (error) {
+                console.error('Conversion error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+                convertBtn.disabled = false;
+                advancedBtn.disabled = false;
+            }
+        }
+
+        const batchConvertBtn = document.getElementById('batchConvertBtn');
+        const batchClearBtn = document.getElementById('batchClearBtn');
+        const queueItems = document.getElementById('queueItems');
+        const queueCount = document.getElementById('queueCount');
+        let batchFiles = [];
+
+        function addFilesToBatch(files) {
+            files.forEach(file => {
+                if ((file.name.endsWith('.cbr') || file.name.endsWith('.cbz')) && batchFiles.length < 20) {
+                    if (!batchFiles.some(f => f.name === file.name && f.size === file.size)) {
+                        batchFiles.push(file);
+                    }
+                }
+            });
+            updateBatchQueue();
+        }
+
+        function updateBatchQueue() {
+            queueItems.innerHTML = '';
+            batchFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'queue-item';
+                item.innerHTML = `
+                    <span class="queue-item-name">${index + 1}. ${file.name}</span>
+                    <button class="queue-item-remove" onclick="removeBatchFile(${index})">Remove</button>
+                `;
+                queueItems.appendChild(item);
+            });
+            queueCount.textContent = batchFiles.length;
+            batchConvertBtn.disabled = batchFiles.length === 0;
+        }
+
+        function removeBatchFile(index) {
+            batchFiles.splice(index, 1);
+            updateBatchQueue();
+        }
+
+        window.removeBatchFile = removeBatchFile;
+
+        batchClearBtn.addEventListener('click', () => {
+            batchFiles = [];
+            fileInput.value = '';
+            updateBatchQueue();
+            statusMessage.classList.remove('show');
+        });
+
+        batchConvertBtn.addEventListener('click', async () => {
+            if (batchFiles.length === 0) return;
+
+            const formData = new FormData();
+            batchFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            formData.append('bgColor', document.getElementById('bgColor').value);
+            formData.append('quality', document.getElementById('quality').value);
+
+            batchConvertBtn.disabled = true;
+            showStatus(`📦 Converting ${batchFiles.length} files... Please wait! ⏳`, 'loading');
+
+            try {
+                const response = await fetch('/api/batch-convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Batch conversion failed');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = batchFiles.length === 1 
+                    ? batchFiles[0].name.replace(/\.(cbr|cbz)$/i, '.pdf')
+                    : 'converted-pdfs.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                showStatus(`✅ Success! Converted and downloaded ${batchFiles.length} files!`, 'success');
+                setTimeout(() => {
+                    batchFiles = [];
+                    fileInput.value = '';
+                    updateBatchQueue();
+                    statusMessage.classList.remove('show');
+                }, 2500);
+                
+            } catch (error) {
+                console.error('Batch conversion error:', error);
+                showStatus(`❌ Error: ${error.message}`, 'error');
+                batchConvertBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
