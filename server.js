@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { PDFDocument, rgb } = require('pdf-lib');
 const { createExtractorFromData } = require('node-unrar-js');
 const sharp = require('sharp');
@@ -9,7 +10,7 @@ const AdmZip = require('adm-zip');
 const archiver = require('archiver');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.static('public'));
 app.use(express.json());
@@ -18,7 +19,7 @@ app.use(express.urlencoded({ extended: true }));
 // Configure multer for file uploads
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 500 * 1024 * 1024 },
+    limits: { fileSize: 4.5 * 1024 * 1024 }, // Adjusted to Vercel Serverless limit (4.5MB)
     fileFilter: (req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();
         if (ext === '.cbr' || ext === '.cbz') {
@@ -338,7 +339,8 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         let pageStart = parseInt(req.body.pageStart) || 1;
         let pageEnd = parseInt(req.body.pageEnd) || undefined;
         
-        tempDir = path.join(__dirname, 'temp', Date.now().toString());
+        // Vercel friendly temp directory
+        tempDir = path.join(os.tmpdir(), 'cbr_convert_' + Date.now().toString());
         if (!fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
@@ -372,7 +374,11 @@ app.post('/api/convert', upload.single('file'), async (req, res) => {
         res.status(500).json({ error: error.message || 'Conversion failed' });
     } finally {
         if (tempDir && fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
+            try {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch (cleanupError) {
+                console.error('Checkup cleanup error', cleanupError);
+            }
         }
     }
 });
@@ -388,7 +394,8 @@ app.post('/api/batch-convert', upload.array('files', 20), async (req, res) => {
         const bgColor = req.body.bgColor || 'white';
         const quality = parseInt(req.body.quality) || 75;
         
-        tempDir = path.join(__dirname, 'temp', Date.now().toString());
+        // Vercel friendly temp directory
+        tempDir = path.join(os.tmpdir(), 'cbr_batch_' + Date.now().toString());
         if (!fs.existsSync(tempDir)) {
             fs.mkdirSync(tempDir, { recursive: true });
         }
@@ -448,12 +455,21 @@ app.post('/api/batch-convert', upload.array('files', 20), async (req, res) => {
         res.status(500).json({ error: error.message || 'Batch conversion failed' });
     } finally {
         if (tempDir && fs.existsSync(tempDir)) {
-            fs.rmSync(tempDir, { recursive: true, force: true });
+            try {
+                fs.rmSync(tempDir, { recursive: true, force: true });
+            } catch (cleanupError) {
+                console.error('Cleanup error', cleanupError);
+            }
         }
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 CBR to PDF Converter running at http://localhost:${PORT}`);
-    console.log(`📚 Upload CBR/CBZ files to convert them to PDF`);
-});
+// For Vercel, we export the app. For local development, we listen.
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`🚀 CBR to PDF Converter running at http://localhost:${PORT}`);
+        console.log(`📚 Upload CBR/CBZ files to convert them to PDF`);
+    });
+}
+
+module.exports = app;
