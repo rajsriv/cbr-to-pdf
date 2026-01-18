@@ -7,6 +7,7 @@ A fast, easy-to-use web application that converts CBR (Comic Book RAR) and CBZ (
 - **Multi-format Support**: Handles both CBR and CBZ archive formats
 - **Smart Format Detection**: Automatically detects archive type using magic bytes with fallback to file extension
 - **Preserves Quality**: High-quality image processing with adjustable compression settings
+  - You can select quality through a drag bar.
 - **A4 Optimized**: Images are automatically scaled and centered for A4 paper size
 - **Batch Conversion**: Convert multiple files at once and download as ZIP
 - **Customization Options**:
