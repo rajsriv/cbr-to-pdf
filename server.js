@@ -1,13 +1,14 @@
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs-extra');
 const os = require('os');
 const { PDFDocument, rgb } = require('pdf-lib');
 const { createExtractorFromData } = require('node-unrar-js');
 const sharp = require('sharp');
 const AdmZip = require('adm-zip');
 const archiver = require('archiver');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,15 +17,24 @@ app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Configure multer for file uploads
-const upload = multer({
-    storage: multer.memoryStorage(),
-    // Vercel has a strict 4.5MB body limit. Local/other hosts get 500MB.
-    limits: {
-        fileSize: (process.env.VERCEL || process.env.NODE_ENV === 'production')
-            ? 4.5 * 1024 * 1024  // 4.5MB for Serverless
-            : 500 * 1024 * 1024  // 500MB for Local
+// --- Directories ---
+const TEMP_DIR = path.join(os.tmpdir(), 'cbr-converter-files');
+fs.ensureDirSync(TEMP_DIR);
+
+// --- Storage Configuration ---
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, TEMP_DIR);
     },
+    filename: (req, file, cb) => {
+        const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
+        cb(null, uniqueName);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
     fileFilter: (req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();
         if (ext === '.cbr' || ext === '.cbz') {
@@ -35,448 +45,347 @@ const upload = multer({
     }
 });
 
+// --- In-Memory Store for Metadata ---
+// Map<fileId, { originalName, filePath, type, totalPages, pages: [] }>
+const fileStore = new Map();
+
+// --- Constants ---
 const A4_WIDTH = 595.28;
 const A4_HEIGHT = 841.89;
 
-// Check if buffer is a valid RAR archive
-function isValidRAR(buffer) {
-    if (!buffer || buffer.length < 7) return false;
-    // RAR magic bytes: 52 61 72 21 1A 07 00 (Rar!\x1A\x07\x00)
-    const rarSignature = Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]);
-    return buffer.subarray(0, 7).equals(rarSignature);
-}
-
-// 🔧 FIXED: Check if buffer is a valid ZIP archive
-function isValidZIP(buffer) {
-    if (!buffer || buffer.length < 4) return false;
-    // ZIP magic bytes: 50 4B 03 04 (PK\x03\x04)
-    return buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04;
-}
-
-async function extractImagesFromRAR(fileBuffer) {
-    try {
-        const extractor = await createExtractorFromData({
-            data: fileBuffer
-        });
-
-        const list = extractor.getFileList();
-        const imageFiles = [];
-
-        for (const fileHeader of list.fileHeaders) {
-            if (/\.(jpg|jpeg|png|gif|webp)$/i.test(fileHeader.name)) {
-                imageFiles.push(fileHeader.name);
-            }
-        }
-
-        return { imageFiles, extractor };
-    } catch (error) {
-        throw new Error(`Failed to extract RAR archive: ${error.message}`);
-    }
-}
-
-async function extractImagesFromZIP(fileBuffer) {
-    try {
-        const zip = new AdmZip(fileBuffer);
-        const zipEntries = zip.getEntries();
-
-        const imageFiles = [];
-        const imageData = {};
-
-        for (const entry of zipEntries) {
-            if (!entry.isDirectory && /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.name)) {
-                imageFiles.push(entry.name);
-                imageData[entry.name] = entry.getData();
-            }
-        }
-
-        return { imageFiles, imageData };
-    } catch (error) {
-        throw new Error(`Failed to extract ZIP archive: ${error.message}`);
-    }
-}
+// --- Helper Functions ---
 
 function naturalSort(a, b) {
-    const fileA = a.split(/[\\\/]/).pop().toLowerCase();
-    const fileB = b.split(/[\\\/]/).pop().toLowerCase();
-
-    const aaParts = fileA.match(/(\d+|\D+)/g) || [];
-    const bParts = fileB.match(/(\d+|\D+)/g) || [];
-
-    for (let i = 0; i < Math.max(aaParts.length, bParts.length); i++) {
-        const partA = aaParts[i] || '';
-        const partB = bParts[i] || '';
-
-        if (/^\d+$/.test(partA) && /^\d+$/.test(partB)) {
-            const numA = parseInt(partA, 10);
-            const numB = parseInt(partB, 10);
-            if (numA !== numB) return numA - numB;
-        } else {
-            if (partA !== partB) return partA.localeCompare(partB);
-        }
-    }
-    return 0;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-// Auto-detect archive type by magic bytes, fallback to extension
-async function extractImagesFromArchive(fileBuffer, fileName) {
-    let imageFiles, extractor, imageData;
-    const ext = path.extname(fileName).toLowerCase();
+async function getArchiveFileList(filePath, originalName) {
+    const ext = path.extname(originalName).toLowerCase();
+    const fileBuffer = await fs.readFile(filePath);
+    let imageFiles = [];
+    let type = 'unknown';
 
-    //Try to detect by magic bytes first
-    const isRAR = isValidRAR(fileBuffer);
-    const isZIP = isValidZIP(fileBuffer);
-
-    // Determine which extractor to use
-    let useRAR = false;
-    let useZIP = false;
-
-    if (isRAR) {
-        useRAR = true;
-    } else if (isZIP) {
-        useZIP = true;
-    } else if (ext === '.cbr') {
-        useRAR = true;
-    } else if (ext === '.cbz') {
-        useZIP = true;
-    } else {
-        throw new Error('Cannot determine archive type. File may be corrupted.');
-    }
-
-    try {
-        if (useRAR) {
-            console.log('📦 Detected RAR archive format');
-            const result = await extractImagesFromRAR(fileBuffer);
-            imageFiles = result.imageFiles;
-            extractor = result.extractor;
-        } else if (useZIP) {
-            console.log('📦 Detected ZIP archive format');
-            const result = await extractImagesFromZIP(fileBuffer);
-            imageFiles = result.imageFiles;
-            imageData = result.imageData;
-        } else {
-            throw new Error('Unsupported archive format');
-        }
-    } catch (error) {
-        console.error('Archive extraction error:', error.message);
-
-        // If detection failed, try the alternative format
-        if (useRAR && !isRAR) {
-            console.log('⚠️  RAR detection failed, trying ZIP...');
-            try {
-                const result = await extractImagesFromZIP(fileBuffer);
-                imageFiles = result.imageFiles;
-                imageData = result.imageData;
-                useRAR = false;
-                useZIP = true;
-            } catch (zipError) {
-                throw new Error(`Failed to extract archive: ${error.message}`);
-            }
-        } else if (useZIP && !isZIP) {
-            console.log('⚠️  ZIP detection failed, trying RAR...');
-            try {
-                const result = await extractImagesFromRAR(fileBuffer);
-                imageFiles = result.imageFiles;
-                extractor = result.extractor;
-                useZIP = false;
-                useRAR = true;
-            } catch (rarError) {
-                throw new Error(`Failed to extract archive: ${error.message}`);
-            }
-        } else {
-            throw error;
-        }
-    }
-
-    // Sort images
-    imageFiles.sort(naturalSort);
-
-    if (imageFiles.length === 0) {
-        throw new Error('No images found in archive file');
-    }
-
-    console.log(`✅ Found ${imageFiles.length} images`);
-    return { imageFiles, extractor, imageData };
-}
-
-async function createPDFFromImages(imageFiles, extractor, imageData, bgColor, quality, requiredImageFiles) {
-    const extractedImages = [];
-
-    if (extractor) {
-        const extracted = extractor.extract({
-            files: requiredImageFiles
-        });
-
-        const extractedMap = {};
-        for (const file of extracted.files) {
-            if (file.extraction) {
-                const fullPath = file.fileHeader.name;
-                extractedMap[fullPath] = {
-                    name: fullPath,
-                    data: Buffer.from(file.extraction)
-                };
-            }
-        }
-
-        for (const imagePath of requiredImageFiles) {
-            if (extractedMap[imagePath]) {
-                console.log(`${extractedImages.length + 1}. ${imagePath}`);
-                extractedImages.push(extractedMap[imagePath]);
-            }
-        }
-    } else if (imageData) {
-        for (const imagePath of requiredImageFiles) {
-            if (imageData[imagePath]) {
-                console.log(`${extractedImages.length + 1}. ${imagePath}`);
-                extractedImages.push({
-                    name: imagePath,
-                    data: imageData[imagePath]
-                });
-            }
-        }
-    }
-
-    console.log(`✅ Total images extracted: ${extractedImages.length}\n`);
-
-    const pdfDoc = await PDFDocument.create();
-
-    for (const imageFile of extractedImages) {
+    // Try RAR
+    if (ext === '.cbr') {
         try {
-            let imageDataBuffer = imageFile.data;
-            const ext = path.extname(imageFile.name).toLowerCase();
-
-            if (ext === '.png') {
-                imageDataBuffer = await sharp(imageDataBuffer)
-                    .png({ compressionLevel: Math.floor(quality / 20) })
-                    .toBuffer();
-            } else {
-                imageDataBuffer = await sharp(imageDataBuffer)
-                    .jpeg({ quality: quality, progressive: true })
-                    .toBuffer();
+            const extractor = await createExtractorFromData({ data: fileBuffer });
+            const list = extractor.getFileList();
+            for (const header of list.fileHeaders) {
+                if (!header.flags.directory && /\.(jpg|jpeg|png|gif|webp)$/i.test(header.name)) {
+                    imageFiles.push(header.name);
+                }
             }
-
-            const metadata = await sharp(imageDataBuffer).metadata();
-            const imgWidth = metadata.width;
-            const imgHeight = metadata.height;
-
-            const margin = 0;
-            const availableWidth = A4_WIDTH - (2 * margin);
-            const availableHeight = A4_HEIGHT - (2 * margin);
-
-            let finalWidth = availableWidth;
-            let finalHeight = (imgWidth > 0) ? (availableWidth * imgHeight) / imgWidth : availableHeight;
-
-            if (finalHeight > availableHeight) {
-                finalHeight = availableHeight;
-                finalWidth = (imgHeight > 0) ? (availableHeight * imgWidth) / imgHeight : availableWidth;
-            }
-
-            const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
-
-            if (bgColor === 'black') {
-                page.drawRectangle({
-                    x: 0,
-                    y: 0,
-                    width: A4_WIDTH,
-                    height: A4_HEIGHT,
-                    color: rgb(0, 0, 0)
-                });
-            } else {
-                page.drawRectangle({
-                    x: 0,
-                    y: 0,
-                    width: A4_WIDTH,
-                    height: A4_HEIGHT,
-                    color: rgb(1, 1, 1)
-                });
-            }
-
-            let image;
-            if (ext === '.png') {
-                image = await pdfDoc.embedPng(imageDataBuffer);
-            } else {
-                image = await pdfDoc.embedJpg(imageDataBuffer);
-            }
-
-            const xPos = (A4_WIDTH - finalWidth) / 2;
-            const yPos = (A4_HEIGHT - finalHeight) / 2;
-
-            page.drawImage(image, {
-                x: xPos,
-                y: yPos,
-                width: finalWidth,
-                height: finalHeight
-            });
-
-        } catch (err) {
-            console.error(`Error processing image ${imageFile.name}:`, err.message);
-        }
+            type = 'rar';
+        } catch (e) { console.log('RAR check failed, trying ZIP fallback'); }
     }
 
-    return await pdfDoc.save();
+    // Try ZIP (or fallback)
+    if (type === 'unknown' || imageFiles.length === 0) {
+        try {
+            const zip = new AdmZip(filePath);
+            const zipEntries = zip.getEntries();
+            zipEntries.forEach(entry => {
+                if (!entry.isDirectory && /\.(jpg|jpeg|png|gif|webp)$/i.test(entry.entryName)) {
+                    imageFiles.push(entry.entryName);
+                }
+            });
+            // If ZIP worked
+            if (imageFiles.length > 0) type = 'zip';
+        } catch (e) { /* ignore */ }
+    }
+
+    // Double check RAR magic bytes if still unknown
+    if (type === 'unknown' && fileBuffer.length > 7 && fileBuffer.subarray(0, 7).equals(Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00]))) {
+        try {
+            const extractor = await createExtractorFromData({ data: fileBuffer });
+            const list = extractor.getFileList();
+            for (const header of list.fileHeaders) {
+                if (!header.flags.directory && /\.(jpg|jpeg|png|gif|webp)$/i.test(header.name)) {
+                    imageFiles.push(header.name);
+                }
+            }
+            if (imageFiles.length > 0) type = 'rar';
+        } catch (e) { }
+    }
+
+    imageFiles.sort(naturalSort);
+    return { type, imageFiles };
 }
 
-// Endpoint to get page count
-app.post('/api/get-page-count', upload.single('file'), async (req, res) => {
+async function extractImageBuffer(filePath, type, imageName) {
+    if (type === 'rar') {
+        const fileBuffer = await fs.readFile(filePath);
+        const extractor = await createExtractorFromData({ data: fileBuffer });
+        const extracted = extractor.extract({ files: [imageName] });
+        const file = extracted.files[0];
+        if (file && file.extraction) {
+            return Buffer.from(file.extraction);
+        }
+    } else if (type === 'zip') {
+        const zip = new AdmZip(filePath);
+        const entry = zip.getEntry(imageName);
+        if (entry) {
+            return entry.getData();
+        }
+    }
+    throw new Error('Image extraction failed');
+}
+
+// --- Routes ---
+
+// 1. Upload
+app.post('/api/upload', upload.array('files'), async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
+        const files = req.files;
+        if (!files || files.length === 0) return res.status(400).json({ error: 'No files uploaded' });
+
+        const results = [];
+
+        for (const file of files) {
+            const fileId = path.parse(file.filename).name; // UUID from diskStorage
+            const { type, imageFiles } = await getArchiveFileList(file.path, file.originalname);
+
+            if (imageFiles.length === 0) {
+                // Invalid or empty, cleanup
+                await fs.remove(file.path);
+                continue;
+            }
+
+            const metadata = {
+                id: fileId,
+                originalName: file.originalname,
+                filePath: file.path,
+                type,
+                totalPages: imageFiles.length,
+                pages: imageFiles
+            };
+
+            fileStore.set(fileId, metadata);
+
+            results.push({
+                id: fileId,
+                name: file.originalname,
+                totalPages: imageFiles.length,
+                size: file.size
+            });
         }
 
-        const { imageFiles } = await extractImagesFromArchive(req.file.buffer, req.file.originalname);
-        res.json({ totalPages: imageFiles.length });
-
+        res.json({ success: true, files: results });
     } catch (error) {
-        console.error('Error getting page count:', error);
-        res.status(500).json({ error: error.message || 'Failed to get page count' });
+        console.error('Upload error:', error);
+        res.status(500).json({ error: 'Upload processing failed' });
     }
 });
 
-// Single file conversion endpoint
-app.post('/api/convert', upload.single('file'), async (req, res) => {
-    let tempDir;
+// 2. Get File Pages (for editor)
+app.get('/api/files/:id', (req, res) => {
+    const fileData = fileStore.get(req.params.id);
+    if (!fileData) return res.status(404).json({ error: 'File not found' });
+    res.json({
+        id: fileData.id,
+        name: fileData.originalName,
+        pages: fileData.pages
+    });
+});
+
+// 3. Get Thumbnail
+app.get('/api/preview/:id/:pageIndex', async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
-        }
+        const { id, pageIndex } = req.params;
+        const fileData = fileStore.get(id);
+        if (!fileData) return res.status(404).send('File not found');
 
-        const bgColor = req.body.bgColor || 'white';
-        const quality = parseInt(req.body.quality) || 75;
-        let pageStart = parseInt(req.body.pageStart) || 1;
-        let pageEnd = parseInt(req.body.pageEnd) || undefined;
+        const index = parseInt(pageIndex);
+        if (index < 0 || index >= fileData.pages.length) return res.status(400).send('Invalid page index');
 
-        // Vercel friendly temp directory
-        tempDir = path.join(os.tmpdir(), 'cbr_convert_' + Date.now().toString());
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
+        const imageName = fileData.pages[index];
+        let buffer = await extractImageBuffer(fileData.filePath, fileData.type, imageName);
 
-        const { imageFiles, extractor, imageData } = await extractImagesFromArchive(req.file.buffer, req.file.originalname);
+        // Resize for thumbnail
+        buffer = await sharp(buffer)
+            .resize(300, 400, { fit: 'inside' })
+            .jpeg({ quality: 60 })
+            .toBuffer();
 
-        if (!pageEnd || pageEnd > imageFiles.length) {
-            pageEnd = imageFiles.length;
-        }
-
-        pageStart = Math.max(1, Math.min(pageStart, imageFiles.length));
-        pageEnd = Math.max(pageStart, Math.min(pageEnd, imageFiles.length));
-
-        const requiredImageFiles = imageFiles.slice(pageStart - 1, pageEnd);
-
-        console.log(`📄 Converting pages ${pageStart} to ${pageEnd} (Total: ${requiredImageFiles.length} pages)`);
-
-        const pdfBytes = await createPDFFromImages(imageFiles, extractor, imageData, bgColor, quality, requiredImageFiles);
-
-        const fileName = req.file.originalname.replace(/\.(cbr|cbz)$/i, '.pdf');
-
-        // Sanitize filename for header
-        const safeFileName = fileName.replace(/"/g, '').replace(/[^\x20-\x7E]/g, '');
-
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Length', pdfBytes.length);
-        res.setHeader('Content-Disposition', `attachment; filename="${safeFileName}"`);
-        res.send(Buffer.from(pdfBytes));
-
-        console.log(`✅ Conversion completed: ${fileName}\n`);
-
+        res.set('Content-Type', 'image/jpeg');
+        res.send(buffer);
     } catch (error) {
-        console.error('Conversion error:', error);
-        res.status(500).json({ error: error.message || 'Conversion failed' });
-    } finally {
-        if (tempDir && fs.existsSync(tempDir)) {
-            try {
-                fs.rmSync(tempDir, { recursive: true, force: true });
-            } catch (cleanupError) {
-                console.error('Checkup cleanup error', cleanupError);
-            }
-        }
+        console.error('Preview error:', error);
+        res.status(500).send('Error');
     }
 });
 
-// Batch file conversion endpoint
-app.post('/api/batch-convert', upload.array('files', 20), async (req, res) => {
-    let tempDir;
+// 4. Delete File
+app.delete('/api/files/:id', async (req, res) => {
+    const { id } = req.params;
+    const fileData = fileStore.get(id);
+    if (fileData) {
+        await fs.remove(fileData.filePath);
+        fileStore.delete(id);
+    }
+    res.json({ success: true });
+});
+
+// 5. Convert (Central Endpoint)
+app.post('/api/convert', async (req, res) => {
     try {
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ error: 'No files uploaded' });
-        }
+        const { mode, globalSettings, jobs } = req.body;
 
-        const bgColor = req.body.bgColor || 'white';
-        const quality = parseInt(req.body.quality) || 75;
+        if (!jobs || jobs.length === 0) throw new Error('No jobs defined');
 
-        // Vercel friendly temp directory
-        tempDir = path.join(os.tmpdir(), 'cbr_batch_' + Date.now().toString());
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
+        console.log(`🚀 Starting Conversion: Mode=${mode}, Jobs=${jobs.length}`);
 
-        console.log(`\n📦 Starting batch conversion of ${req.files.length} files...`);
+        const processJob = async (job) => {
+            const fileData = fileStore.get(job.fileId);
+            if (!fileData) throw new Error(`File ${job.fileId} not found`);
 
-        const pdfBuffers = [];
+            const pdfDoc = await PDFDocument.create();
+            // Map selected page indices (which are integers) to image names
+            const pagesToProcess = job.pages !== null ? job.pages : fileData.pages.map((_, i) => i);
 
-        for (let i = 0; i < req.files.length; i++) {
-            const file = req.files[i];
-            try {
-                console.log(`[${i + 1}/${req.files.length}] Processing: ${file.originalname}`);
+            // Job settings override global (not fully used in frontend yet, but good for structure)
+            const settings = { ...globalSettings };
+            const bgColor = settings.bgColor || 'white';
+            const quality = parseInt(settings.quality) || 80;
 
-                const { imageFiles, extractor, imageData } = await extractImagesFromArchive(file.buffer, file.originalname);
-                const requiredImageFiles = imageFiles.slice(0, imageFiles.length);
+            for (const pageIndex of pagesToProcess) {
+                const imageName = fileData.pages[pageIndex];
+                if (!imageName) continue;
 
-                const pdfBytes = await createPDFFromImages(imageFiles, extractor, imageData, bgColor, quality, requiredImageFiles);
-                const pdfFileName = file.originalname.replace(/\.(cbr|cbz)$/i, '.pdf');
+                try {
+                    let imgBuffer = await extractImageBuffer(fileData.filePath, fileData.type, imageName);
+                    const sharpImg = sharp(imgBuffer);
+                    const metadata = await sharpImg.metadata();
 
-                pdfBuffers.push({
-                    name: pdfFileName,
-                    data: Buffer.from(pdfBytes)
-                });
+                    let processedBuffer;
+                    if (metadata.format === 'png' && quality === 100) {
+                        processedBuffer = await sharpImg.png().toBuffer();
+                    } else {
+                        processedBuffer = await sharpImg.jpeg({ quality }).toBuffer();
+                    }
 
-                console.log(`✅ ${pdfFileName} created`);
+                    let embeddedImage;
+                    const metaRef = await sharp(processedBuffer).metadata(); // Reload meta for format
+                    if (metaRef.format === 'png') {
+                        embeddedImage = await pdfDoc.embedPng(processedBuffer);
+                    } else {
+                        embeddedImage = await pdfDoc.embedJpg(processedBuffer);
+                    }
 
-            } catch (error) {
-                console.error(`❌ Error converting ${file.originalname}:`, error.message);
+                    const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
+
+                    if (bgColor === 'black') {
+                        page.drawRectangle({ x: 0, y: 0, width: A4_WIDTH, height: A4_HEIGHT, color: rgb(0, 0, 0) });
+                    } else {
+                        page.drawRectangle({ x: 0, y: 0, width: A4_WIDTH, height: A4_HEIGHT, color: rgb(1, 1, 1) });
+                    }
+
+                    const { width, height } = embeddedImage;
+                    const scale = Math.min(A4_WIDTH / width, A4_HEIGHT / height);
+                    const drawWidth = width * scale;
+                    const drawHeight = height * scale;
+
+                    const x = (A4_WIDTH - drawWidth) / 2;
+                    const y = (A4_HEIGHT - drawHeight) / 2;
+
+                    page.drawImage(embeddedImage, {
+                        x, y, width: drawWidth, height: drawHeight
+                    });
+                } catch (e) {
+                    console.error(`Page error ${imageName}:`, e.message);
+                }
             }
-        }
 
-        if (pdfBuffers.length === 0) {
-            return res.status(500).json({ error: 'No files could be converted' });
-        }
+            const pdfBytes = await pdfDoc.save();
+            return {
+                filename: fileData.originalName.replace(/\.(cbr|cbz)$/i, '.pdf'),
+                data: Buffer.from(pdfBytes)
+            };
+        };
 
-        if (pdfBuffers.length === 1) {
+        if (mode === 'combine') {
+            const mergedPdf = await PDFDocument.create();
+
+            for (const job of jobs) {
+                const fileData = fileStore.get(job.fileId);
+                if (!fileData) continue;
+
+                const pagesToProcess = job.pages !== null ? job.pages : fileData.pages.map((_, i) => i);
+                const settings = globalSettings;
+                const bgColor = settings.bgColor || 'white';
+                const quality = parseInt(settings.quality) || 80;
+
+                for (const pageIndex of pagesToProcess) {
+                    const imageName = fileData.pages[pageIndex];
+                    try {
+                        let imgBuffer = await extractImageBuffer(fileData.filePath, fileData.type, imageName);
+                        const sharpImg = sharp(imgBuffer);
+
+                        let readyBuffer = await sharpImg.jpeg({ quality }).toBuffer();
+                        const embeddedImage = await mergedPdf.embedJpg(readyBuffer);
+
+                        const page = mergedPdf.addPage([A4_WIDTH, A4_HEIGHT]);
+
+                        if (bgColor === 'black') {
+                            page.drawRectangle({ x: 0, y: 0, width: A4_WIDTH, height: A4_HEIGHT, color: rgb(0, 0, 0) });
+                        } else {
+                            page.drawRectangle({ x: 0, y: 0, width: A4_WIDTH, height: A4_HEIGHT, color: rgb(1, 1, 1) });
+                        }
+
+                        const scale = Math.min(A4_WIDTH / embeddedImage.width, A4_HEIGHT / embeddedImage.height);
+                        const w = embeddedImage.width * scale;
+                        const h = embeddedImage.height * scale;
+
+                        page.drawImage(embeddedImage, {
+                            x: (A4_WIDTH - w) / 2,
+                            y: (A4_HEIGHT - h) / 2,
+                            width: w,
+                            height: h
+                        });
+                    } catch (err) { }
+                }
+            }
+
+            const mergedBytes = await mergedPdf.save();
             res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Length', pdfBuffers[0].data.length);
-            res.setHeader('Content-Disposition', `attachment; filename="${pdfBuffers[0].name}"`);
-            res.send(pdfBuffers[0].data);
-        } else {
-            const archive = archiver('zip', { zlib: { level: 9 } });
-            res.setHeader('Content-Type', 'application/zip');
-            res.setHeader('Content-Disposition', 'attachment; filename="converted-pdfs.zip"');
-            archive.pipe(res);
+            res.setHeader('Content-Disposition', `attachment; filename="Combined_Output.pdf"`);
+            res.send(Buffer.from(mergedBytes));
 
-            for (const pdf of pdfBuffers) {
-                archive.append(pdf.data, { name: pdf.name });
+        } else {
+            // Single or Batch
+            const results = [];
+            for (const job of jobs) {
+                results.push(await processJob(job));
             }
 
-            await archive.finalize();
-            console.log(`\n📦 Batch conversion completed! ${pdfBuffers.length} PDFs packed in ZIP\n`);
+            if (results.length === 1) {
+                res.setHeader('Content-Type', 'application/pdf');
+                res.setHeader('Content-Disposition', `attachment; filename="${results[0].filename}"`);
+                res.send(results[0].data);
+            } else {
+                const archive = archiver('zip', { zlib: { level: 9 } });
+                res.setHeader('Content-Type', 'application/zip');
+                res.setHeader('Content-Disposition', 'attachment; filename="converted_files.zip"');
+                archive.pipe(res);
+                results.forEach(f => archive.append(f.data, { name: f.filename }));
+                await archive.finalize();
+            }
         }
 
     } catch (error) {
-        console.error('Batch conversion error:', error);
-        res.status(500).json({ error: error.message || 'Batch conversion failed' });
-    } finally {
-        if (tempDir && fs.existsSync(tempDir)) {
-            try {
-                fs.rmSync(tempDir, { recursive: true, force: true });
-            } catch (cleanupError) {
-                console.error('Cleanup error', cleanupError);
-            }
-        }
+        console.error('Conversion Failed:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
-// For Vercel, we export the app. For local development, we listen.
+// Legacy support for page count if needed, though mostly handled by upload now
+app.post('/api/get-page-count', (req, res) => {
+    res.json({ totalPages: 0 });
+});
+
 if (require.main === module) {
     app.listen(PORT, () => {
-        console.log(`🚀 CBR to PDF Converter running at http://localhost:${PORT}`);
-        console.log(`📚 Upload CBR/CBZ files to convert them to PDF`);
+        console.log(`🚀 CBR Adapter V2 running at http://localhost:${PORT}`);
     });
 }
 

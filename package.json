@@ -4,11 +4,13 @@
     "archiver": "^7.0.1",
     "express": "^5.2.1",
     "express-fileupload": "^1.5.2",
+    "fs-extra": "^11.3.3",
     "multer": "^2.0.2",
     "node-unrar-js": "^2.0.2",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "uuid": "^13.0.0"
   },
   "name": "cbr",
   "version": "1.0.0",

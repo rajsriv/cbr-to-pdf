@@ -1,22 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>+1 VORTEX | CBR to PDF</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <!-- SortableJS for drag-and-drop reordering in Combine mode -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 </head>
+
 <body>
     <div class="background-noise"></div>
-    
+
     <nav class="navbar">
         <div class="logo">+1 VORTEX</div>
         <div class="nav-links">
-            <a href="#" class="nav-link">ABOUT</a>
-            <a href="#" class="nav-link">FORMATS</a>
+            <a href="#" class="nav-link">DOCS</a>
+            <a href="#" class="nav-link">API</a>
         </div>
         <div class="menu-icon">
             <div class="bar"></div>
@@ -26,73 +32,133 @@
     </nav>
 
     <main class="main-container">
-        <div class="left-section">
-            <h1 class="hero-title">Lab<span class="dot">.</span><span class="orange-dot">.</span></h1>
-            
-            <div class="specs-container">
-                <div class="spec-group">
-                    <label>TARGET OUTPUT</label>
-                    <div class="spec-value-box">
-                        <span class="icon">📄</span> PDF Document
-                    </div>
-                </div>
-
-                <div class="spec-group">
-                    <label>SYSTEM STATUS</label>
-                    <div class="status-lines">
-                        <div class="status-line">Pipeline: <span class="status-ok">READY</span></div>
-                        <div class="status-line">Latency: <span class="variable-font">12ms</span></div>
-                        <div class="status-line">Sandbox: <span class="status-secure">SECURE</span></div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="decorative-number">001</div>
+        <!-- MODE SWITCHER -->
+        <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="single">SINGLE</button>
+            <button class="mode-tab" data-mode="batch">BATCH</button>
+            <button class="mode-tab" data-mode="combine">COMBINE</button>
         </div>
 
-        <div class="right-section">
-            <div class="upload-container" id="uploadContainer">
-                <!-- Initial State -->
-                <div class="upload-state-initial" id="initialState">
-                    <input type="file" id="fileInput" multiple accept=".cbr,.cbz" hidden>
-                    <div class="plus-icon">+</div>
-                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">UPLOAD FILE</button>
-                    <div class="drop-text">or drop files here</div>
+        <div class="content-wrapper">
+            <!-- LEFT PANEL: SETTINGS & INFO -->
+            <div class="left-section">
+                <h1 class="hero-title">Lab<span class="dot">.</span><span class="orange-dot">.</span></h1>
+
+                <div class="settings-panel">
+                    <div class="setting-group">
+                        <label>BACKGROUND COLOR</label>
+                        <div class="toggle-switch-container">
+                            <button class="toggle-opt active" data-value="white">WHITE</button>
+                            <button class="toggle-opt" data-value="black">BLACK</button>
+                        </div>
+                    </div>
+
+                    <div class="setting-group">
+                        <label>QUALITY: <span id="qualityVal">80%</span></label>
+                        <input type="range" id="qualityRange" min="1" max="100" value="80" class="styled-slider">
+                    </div>
+
+                    <!-- SINGLE MODE ADVANCED -->
+                    <div id="singleModeSettings" class="mode-specific-settings">
+                        <div class="setting-group">
+                            <label>PAGE RANGE</label>
+                            <div class="range-inputs">
+                                <input type="number" id="pageStart" placeholder="Start" min="1" class="input-box">
+                                <span class="divider">-</span>
+                                <input type="number" id="pageEnd" placeholder="End" class="input-box">
+                            </div>
+                        </div>
+                        <button class="secondary-btn" id="openEditorBtn" style="display:none;">
+                            OPEN VISUAL EDITOR
+                        </button>
+                    </div>
+
+                    <div id="combineSettings" class="mode-specific-settings" style="display:none;">
+                        <p class="hint-text">Drag files to reorder merge sequence.</p>
+                    </div>
                 </div>
 
-                <!-- Loaded State (Hidden by default) -->
-                <div class="upload-state-loaded" id="loadedState">
-                    <div class="file-count"><span id="fileCount">0</span> FILES LOADED</div>
-                    <div class="file-list" id="fileList">
-                        <!-- File items will be injected here -->
+                <div class="system-status">
+                    <div class="status-line">SYSTEM: <span class="status-ok">ONLINE</span></div>
+                    <div class="status-line">MODE: <span class="status-active-mode">SINGLE-THREAD</span></div>
+                </div>
+
+                <div class="decorative-number">001</div>
+            </div>
+
+            <!-- RIGHT PANEL: UPLOAD & LIST -->
+            <div class="right-section">
+                <div class="upload-container" id="uploadContainer">
+                    <!-- Initial State -->
+                    <div class="upload-state-initial" id="initialState">
+                        <input type="file" id="fileInput" multiple accept=".cbr,.cbz" hidden>
+                        <div class="plus-icon">+</div>
+                        <button class="upload-btn" onclick="document.getElementById('fileInput').click()">UPLOAD
+                            FILES</button>
+                        <div class="drop-text">or drop files here</div>
                     </div>
-                    
-                    <div class="action-buttons">
-                        <button class="start-btn" id="startBtn">
-                            START ALL <span class="arrow">→</span>
-                        </button>
-                        <button class="add-more-btn" onclick="document.getElementById('fileInput').click()">
-                            ADD MORE +
-                        </button>
+
+                    <!-- Loaded State -->
+                    <div class="upload-state-loaded" id="loadedState">
+                        <div class="list-header">
+                            <div class="file-count"><span id="fileCount">0</span> FILES READY</div>
+                            <button class="clear-all-btn" id="clearAllBtn">CLEAR ALL</button>
+                        </div>
+
+                        <div class="file-list" id="fileList">
+                            <!-- Items injected here -->
+                        </div>
+
+                        <div class="action-area">
+                            <div class="progress-area" id="mainProgress" style="display:none;">
+                                <div class="prog-bar">
+                                    <div class="prog-fill" style="width:0%"></div>
+                                </div>
+                                <span class="prog-text">PROCESSING...</span>
+                            </div>
+
+                            <button class="start-btn" id="startBtn">
+                                CONVERT <span class="arrow">→</span>
+                            </button>
+                            <button class="add-more-btn" onclick="document.getElementById('fileInput').click()">
+                                ADD MORE +
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            <div class="side-label">X-LAB SYSTEM V1.0</div>
         </div>
     </main>
 
-    <!-- Processing Popup -->
+    <!-- VISUAL EDITOR MODAL -->
+    <div class="editor-modal" id="editorModal">
+        <div class="editor-header">
+            <div class="editor-title">VISUAL EDITOR <span id="editorFileName">filename.cbr</span></div>
+            <div class="editor-actions">
+                <button class="editor-btn" id="selectAllBtn">SELECT ALL</button>
+                <button class="editor-btn" id="deselectAllBtn">DESELECT ALL</button>
+                <button class="editor-save-btn" id="saveEditorBtn">SAVE & CLOSE</button>
+            </div>
+        </div>
+        <div class="editor-grid" id="editorGrid">
+            <!-- Thumbnails injected here -->
+        </div>
+        <div class="editor-footer">
+            <span>SELECTED: <b id="selectedCount">0</b> / <span id="totalCount">0</span></span>
+            <button class="close-editor-text" id="closeEditorBtn">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- Processing Popup (Global) -->
     <div class="processing-popup" id="processingPopup">
         <div class="popup-header">
-            <h3>PROCESSING STATUS</h3>
+            <h3>STATUS</h3>
             <button class="close-popup" id="closePopup">×</button>
         </div>
-        <div class="popup-content" id="popupContent">
-            <!-- Progress items will be injected here -->
-        </div>
+        <div class="popup-content" id="popupContent"></div>
     </div>
 
     <script src="script.js"></script>
 </body>
+
 </html>
