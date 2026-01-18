@@ -76,6 +76,11 @@ A fast, easy-to-use web application that converts CBR (Comic Book RAR) and CBZ (
 3. Click "Convert All"
 4. All PDFs will be zipped and downloaded together
 
+### Improved Editor Screen
+1. Preview of images
+2. Remove unwanted pages
+3. Save
+
 ## API Endpoints 🔌
 
 ### GET `/` 
