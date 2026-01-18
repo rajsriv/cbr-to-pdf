@@ -71,11 +71,15 @@ async function getArchiveFileList(filePath, originalName) {
             const extractor = await createExtractorFromData({ data: fileBuffer });
             const list = extractor.getFileList();
             for (const header of list.fileHeaders) {
+                if (header.flags.encrypted) {
+                    console.warn(`[RAR] File is encrypted: ${header.name}`);
+                    type = 'rar-encrypted';
+                }
                 if (!header.flags.directory && /\.(jpg|jpeg|png|gif|webp)$/i.test(header.name)) {
                     imageFiles.push(header.name);
                 }
             }
-            type = 'rar';
+            if (type !== 'rar-encrypted') type = 'rar';
         } catch (e) { console.log('RAR check failed, trying ZIP fallback'); }
     }
 
@@ -113,13 +117,26 @@ async function getArchiveFileList(filePath, originalName) {
 }
 
 async function extractImageBuffer(filePath, type, imageName) {
+    if (type === 'rar-encrypted') {
+        throw new Error('File is password protected');
+    }
     if (type === 'rar') {
         const fileBuffer = await fs.readFile(filePath);
         const extractor = await createExtractorFromData({ data: fileBuffer });
         const extracted = extractor.extract({ files: [imageName] });
-        const file = extracted.files[0];
-        if (file && file.extraction) {
-            return Buffer.from(file.extraction);
+
+        if (extracted.files && extracted.files.length > 0) {
+            const file = extracted.files[0];
+            if (file.extraction) {
+                return Buffer.from(file.extraction);
+            } else {
+                console.error(`RAR: File found but no extraction data for '${imageName}'`);
+            }
+        } else {
+            console.error(`RAR: File '${imageName}' not found in extraction results.`);
+            // content listing for debug
+            // const list = extractor.getFileList();
+            // console.log('Available files:', list.fileHeaders.map(h => h.name).slice(0, 5));
         }
     } else if (type === 'zip') {
         const zip = new AdmZip(filePath);
